@@ -1,0 +1,13 @@
+environment: local
+
+appium:
+  server_url: "http://127.0.0.1:4723"
+
+android:
+  platform_name: "Android"
+  automation_name: "UiAutomator2"
+  device_name: "Android Emulator"
+
+app:
+  package: "com.android.settings"
+  activity: ".Settings"

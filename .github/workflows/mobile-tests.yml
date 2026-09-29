@@ -1,0 +1,91 @@
+name: Mobile Automation Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  mobile-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install Appium
+        run: |
+          npm install -g appium@3.7.0
+          appium --version
+
+      - name: Install UiAutomator2 driver
+        run: |
+          appium driver install uiautomator2
+          appium driver list --installed
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK components
+        run: |
+          sdkmanager "platform-tools"
+          sdkmanager "platforms;android-35"
+          sdkmanager "build-tools;35.0.0"
+          sdkmanager "emulator"
+          sdkmanager "system-images;android-35;google_apis;x86_64"
+
+      - name: Accept Android licenses
+        run: |
+          yes | sdkmanager --licenses || true
+
+      - name: Create Android emulator
+        run: |
+          echo "no" | avdmanager create avd \
+            --name ci-emulator \
+            --package "system-images;android-35;google_apis;x86_64" \
+            --device "pixel_2" \
+            --force
+
+      - name: Start Android emulator
+        run: |
+          nohup emulator \
+            -avd ci-emulator \
+            -no-window \
+            -no-audio \
+            -no-boot-anim \
+            -gpu swiftshader_indirect \
+            > emulator.log 2>&1 &
+
+          adb wait-for-device
+
+          adb shell \
+            'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done'
+
+          adb shell input keyevent 82
+
+      - name: Verify Android emulator
+        run: |
+          adb devices
+          adb shell getprop ro.build.version.sdk
+
+      - name: Run tests
+        run: |
+          pytest --env local
