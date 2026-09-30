@@ -68,21 +68,74 @@ jobs:
 
       - name: Start Android emulator
         run: |
+          set -e
+          
+          echo "Starting Android emulator..."
+          
           nohup emulator \
             -avd ci-emulator \
             -no-window \
             -no-audio \
             -no-boot-anim \
+            -no-snapshot \
             -gpu swiftshader_indirect \
             > emulator.log 2>&1 &
-
-          adb wait-for-device
-
-          adb shell \
-            'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done'
-
+          
+          EMULATOR_PID=$!
+          echo "Emulator PID: $EMULATOR_PID"
+          
+          echo "Waiting for ADB device..."
+          
+          for i in {1..60}; do
+            if adb devices | grep -q "emulator-"; then
+              echo "Emulator detected by ADB"
+              break
+            fi
+          
+            if ! kill -0 "$EMULATOR_PID" 2>/dev/null; then
+              echo "ERROR: Emulator process exited unexpectedly"
+              cat emulator.log
+              exit 1
+            fi
+          
+            echo "Waiting for emulator... $i/60"
+            sleep 2
+          done
+          
+          if ! adb devices | grep -q "emulator-"; then
+            echo "ERROR: Emulator did not appear in ADB"
+            cat emulator.log
+            exit 1
+          fi
+          
+          echo "Waiting for Android boot to complete..."
+          
+          for i in {1..90}; do
+            BOOT_COMPLETED=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+          
+            if [ "$BOOT_COMPLETED" = "1" ]; then
+              echo "Android boot completed"
+              break
+            fi
+          
+            echo "Android still booting... $i/90"
+            sleep 2
+          done
+          
+          BOOT_COMPLETED=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+          
+          if [ "$BOOT_COMPLETED" != "1" ]; then
+            echo "ERROR: Android emulator failed to boot"
+            echo "===== Emulator log ====="
+            cat emulator.log
+            echo "===== ADB devices ====="
+            adb devices
+            exit 1
+          fi
+          
           adb shell input keyevent 82
-
+          
+          echo "Android emulator is ready!"
       - name: Verify Android emulator
         run: |
           adb devices
