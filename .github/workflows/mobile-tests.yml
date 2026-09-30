@@ -66,6 +66,11 @@ jobs:
             --device "pixel_2" \
             --force
 
+      - name: Install Emulator Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpulse0
+
       - name: Start Android Emulator
         run: |
           set -e
