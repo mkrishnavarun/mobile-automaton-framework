@@ -113,6 +113,77 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libpulse0
 
+      - name: Enable KVM
+        run: |
+          set -e
+      
+          echo "Current user: $USER"
+          id
+      
+          echo "KVM group before:"
+          getent group kvm
+      
+          sudo gpasswd -a "$USER" kvm
+      
+          echo "KVM group after:"
+          getent group kvm
+      
+          # Refresh group membership for this shell
+          sudo chown "$USER":"$(id -gn)" /dev/kvm || true
+          sudo chmod 660 /dev/kvm
+      
+          echo "KVM device:"
+          ls -l /dev/kvm
+      
+          echo "Testing KVM access..."
+          if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+            echo "KVM access looks good."
+          else
+            echo "ERROR: Current shell still cannot access /dev/kvm"
+            exit 1
+          fi
+      - name: Check KVM
+        run: |
+          set -e
+
+          echo "===== USER ====="
+          whoami
+          id
+
+          echo "===== KVM DEVICE ====="
+          ls -l /dev/kvm || true
+
+          echo "===== KVM GROUP ====="
+          getent group kvm || true
+
+          echo "===== KVM MODULE ====="
+          lsmod | grep kvm || true
+
+          if [ ! -e /dev/kvm ]; then
+            echo "ERROR: /dev/kvm does not exist"
+            exit 1
+          fi
+
+          echo "===== KVM PERMISSIONS BEFORE ====="
+          ls -l /dev/kvm
+
+          sudo chmod 666 /dev/kvm
+
+          echo "===== KVM PERMISSIONS AFTER ====="
+          ls -l /dev/kvm
+
+          echo "===== KVM ACCESS TEST ====="
+          test -r /dev/kvm
+          test -w /dev/kvm
+
+          echo "KVM is accessible."
+          
+
+      - name: Verify Android emulator
+        run: |
+          adb devices
+          adb shell getprop ro.build.version.sdk
+
       - name: Start Android Emulator
         run: |
           set -e
@@ -159,46 +230,6 @@ jobs:
 
           echo "Emulator process is alive."
           adb devices
-
-      - name: Check KVM
-        run: |
-          set -e
-
-          echo "===== USER ====="
-          whoami
-          id
-
-          echo "===== KVM DEVICE ====="
-          ls -l /dev/kvm || true
-
-          echo "===== KVM GROUP ====="
-          getent group kvm || true
-
-          echo "===== KVM MODULE ====="
-          lsmod | grep kvm || true
-
-          if [ ! -e /dev/kvm ]; then
-            echo "ERROR: /dev/kvm does not exist"
-            exit 1
-          fi
-
-          echo "===== KVM PERMISSIONS BEFORE ====="
-          ls -l /dev/kvm
-
-          sudo chmod 666 /dev/kvm
-
-          echo "===== KVM PERMISSIONS AFTER ====="
-          ls -l /dev/kvm
-
-          echo "===== KVM ACCESS TEST ====="
-          test -r /dev/kvm
-          test -w /dev/kvm
-
-          echo "KVM is accessible."
-      - name: Verify Android emulator
-        run: |
-          adb devices
-          adb shell getprop ro.build.version.sdk
 
       - name: Run tests
         run: |
