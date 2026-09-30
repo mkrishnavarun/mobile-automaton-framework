@@ -60,11 +60,18 @@ jobs:
 
       - name: Create Android emulator
         run: |
+          echo "Available AVDs before creation:"
+          avdmanager list avd || true
+      
+          echo "Creating AVD..."
+      
           echo "no" | avdmanager create avd \
-            --name ci-emulator \
-            --package "system-images;android-35;google_apis;x86_64" \
-            --device "pixel_2" \
-            --force
+            -n appium-android-34 \
+            -k "system-images;android-35;google_apis;x86_64" \
+            --device "pixel_2"
+      
+          echo "Available AVDs after creation:"
+          avdmanager list avd
 
       - name: Install Emulator Dependencies
         run: |
