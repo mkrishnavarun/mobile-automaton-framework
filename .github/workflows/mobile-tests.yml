@@ -58,20 +58,36 @@ jobs:
         run: |
           yes | sdkmanager --licenses || true
 
-      - name: Create Android emulator
+      - name: Create Android Emulator
         run: |
-          echo "Available AVDs before creation:"
-          avdmanager list avd || true
+          set -e
+    
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/emulator:$ANDROID_SDK_ROOT/platform-tools:$PATH"
       
-          echo "Creating AVD..."
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          echo "HOME=$HOME"
+      
+          echo "===== Installed system images ====="
+          sdkmanager --list_installed | grep -E "system-images|platforms|emulator" || true
+      
+          echo "===== Creating AVD ====="
+      
+          mkdir -p "$HOME/.android/avd"
       
           echo "no" | avdmanager create avd \
-            -n appium-android-34 \
-            -k "system-images;android-35;google_apis;x86_64" \
+            --force \
+            --name appium-android-34 \
+            --package "system-images;android-35;google_apis;x86_64" \
             --device "pixel_2"
       
-          echo "Available AVDs after creation:"
+          echo "===== AVDs ====="
           avdmanager list avd
+      
+          echo "===== AVD files ====="
+          ls -la "$HOME/.android/avd"
+      
+          echo "===== Checking AVD ====="
+          emulator -list-avds
 
       - name: Install Emulator Dependencies
         run: |
