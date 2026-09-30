@@ -179,11 +179,6 @@ jobs:
           echo "KVM is accessible."
           
 
-      - name: Verify Android emulator
-        run: |
-          adb devices
-          adb shell getprop ro.build.version.sdk
-
       - name: Start Android Emulator
         run: |
           set -e
