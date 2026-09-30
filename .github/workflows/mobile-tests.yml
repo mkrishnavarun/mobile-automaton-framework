@@ -246,6 +246,42 @@ jobs:
 
           adb devices
 
+      - name: Start Appium Server
+        run: |
+          set -e
+      
+          echo "Starting Appium server..."
+      
+          nohup appium \
+            --address 127.0.0.1 \
+            --port 4723 \
+            > appium.log 2>&1 &
+      
+          APPIUM_PID=$!
+          echo "Appium PID: $APPIUM_PID"
+      
+          echo "Waiting for Appium..."
+      
+          for i in {1..30}; do
+            if curl -s http://127.0.0.1:4723/status > /dev/null; then
+              echo "Appium server is ready!"
+              break
+            fi
+      
+            echo "Waiting for Appium... $i/30"
+            sleep 2
+          done
+      
+          if ! curl -s http://127.0.0.1:4723/status > /dev/null; then
+            echo "ERROR: Appium failed to start."
+            echo "===== Appium log ====="
+            cat appium.log
+            exit 1
+          fi
+      
+          echo "===== Appium status ====="
+          curl -s http://127.0.0.1:4723/status
+
       - name: Run tests
         run: |
           pytest --env local
