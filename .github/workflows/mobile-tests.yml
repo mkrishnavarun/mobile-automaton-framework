@@ -160,26 +160,41 @@ jobs:
           echo "Emulator process is alive."
           adb devices
 
-      - name: Enable KVM
+      - name: Check KVM
         run: |
-          echo "===== KVM ====="
-          ls -l /dev/kvm || true
+          set -e
 
-          echo "===== KVM group ====="
-          getent group kvm || true
-
-          echo "===== Current user ====="
+          echo "===== USER ====="
           whoami
           id
 
-          if [ -e /dev/kvm ]; then
-            sudo chmod 666 /dev/kvm
-            ls -l /dev/kvm
-          else
-            echo "ERROR: /dev/kvm does not exist on this runner"
+          echo "===== KVM DEVICE ====="
+          ls -l /dev/kvm || true
+
+          echo "===== KVM GROUP ====="
+          getent group kvm || true
+
+          echo "===== KVM MODULE ====="
+          lsmod | grep kvm || true
+
+          if [ ! -e /dev/kvm ]; then
+            echo "ERROR: /dev/kvm does not exist"
             exit 1
           fi
 
+          echo "===== KVM PERMISSIONS BEFORE ====="
+          ls -l /dev/kvm
+
+          sudo chmod 666 /dev/kvm
+
+          echo "===== KVM PERMISSIONS AFTER ====="
+          ls -l /dev/kvm
+
+          echo "===== KVM ACCESS TEST ====="
+          test -r /dev/kvm
+          test -w /dev/kvm
+
+          echo "KVM is accessible."
       - name: Verify Android emulator
         run: |
           adb devices
