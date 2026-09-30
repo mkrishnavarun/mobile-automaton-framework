@@ -188,15 +188,11 @@ jobs:
         run: |
           set -e
 
-          export PATH="$ANDROID_SDK_ROOT/emulator:$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
-
+          export PATH="$ANDROID_SDK_ROOT/emulator:$ANDROID_SDK_ROOT/platform-tools:$PATH"
           export ANDROID_AVD_HOME="$HOME/.android/avd"
           export ANDROID_SDK_HOME="$HOME"
 
-          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME"
-          echo "ANDROID_SDK_HOME=$ANDROID_SDK_HOME"
-
-          echo "===== AVAILABLE AVDs ====="
+          echo "Available AVDs:"
           emulator -list-avds
 
           echo "Starting Android emulator..."
@@ -214,7 +210,7 @@ jobs:
 
           adb start-server
 
-          echo "Waiting for emulator process..."
+          echo "Waiting for emulator to appear in ADB..."
 
           for i in {1..60}; do
             if ! kill -0 "$EMULATOR_PID" 2>/dev/null; then
@@ -224,11 +220,35 @@ jobs:
               exit 1
             fi
 
-            echo "Emulator process is running... $i/60"
-            sleep 2
+            echo "Attempt $i/60"
+            adb devices
+
+            if adb devices | grep -q "emulator-"; then
+              echo "Emulator detected by ADB!"
+              break
+            fi
+
+            sleep 5
           done
 
-          echo "Emulator process is alive."
+          if ! adb devices | grep -q "emulator-"; then
+            echo "ERROR: Emulator did not appear in ADB."
+            echo "===== emulator.log ====="
+            cat emulator.log
+            exit 1
+          fi
+
+          echo "Waiting for Android boot..."
+
+          timeout 180 bash -c '
+            until adb shell getprop sys.boot_completed 2>/dev/null | grep -m 1 "1"; do
+              echo "Android is still booting..."
+              sleep 5
+            done
+          '
+
+          echo "Android emulator boot completed!"
+
           adb devices
 
       - name: Run tests
