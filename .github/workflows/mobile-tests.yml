@@ -300,3 +300,18 @@ jobs:
             emulator.log
             appium.log
           if-no-files-found: warn
+
+      - name: Cleanup mobile infrastructure
+        if: always()
+        run: |
+          echo "Stopping Appium server..."
+
+          if [ -f appium.pid ]; then
+            kill "$(cat appium.pid)" || true
+          fi
+
+          echo "Stopping Android emulator..."
+
+          adb emu kill || true
+
+          echo "Cleanup completed"
