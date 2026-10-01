@@ -287,3 +287,16 @@ jobs:
           pytest --env local \
             --html=reports/html/report.html \
             --self-contained-html
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-test-results
+          path: |
+            reports/
+            screenshots/
+            logs/
+            emulator.log
+            appium.log
+          if-no-files-found: warn
