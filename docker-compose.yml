@@ -1,0 +1,7 @@
+services:
+  mobile-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    network_mode: host
+    command: pytest
