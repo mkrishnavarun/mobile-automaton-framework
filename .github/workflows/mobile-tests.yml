@@ -22,6 +22,10 @@ jobs:
           docker info
           docker compose version
 
+      - name: Build Docker Compose image
+        run: |
+          docker compose build
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
