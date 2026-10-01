@@ -284,4 +284,6 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest --env local
+          pytest --env local \
+            --html=reports/html/report.html \
+            --self-contained-html
