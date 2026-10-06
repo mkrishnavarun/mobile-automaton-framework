@@ -20,3 +20,26 @@ HTML     Logs      Screenshots
 Report
           ↓
    GitHub Artifacts
+
+
+Local Framework
+      ↓
+GitHub Actions
+      ↓
+Android SDK
+      ↓
+AVD
+      ↓
+KVM
+      ↓
+Android Emulator
+      ↓
+ADB
+      ↓
+Appium Server
+      ↓
+UiAutomator2
+      ↓
+Pytest
+      ↓
+🎉 MOBILE TESTS RUNNING IN CI

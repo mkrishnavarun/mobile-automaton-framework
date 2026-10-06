@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import yaml
@@ -20,7 +21,14 @@ class ConfigLoader:
             )
 
         with config_file.open("r", encoding="utf-8") as file:
-            return yaml.safe_load(file)
+            config = yaml.safe_load(file)
+
+        appium_server_url = os.getenv("APPIUM_SERVER_URL")
+
+        if appium_server_url:
+            config["appium"]["server_url"] = appium_server_url
+
+        return config
 
     @property
     def appium(self) -> dict:
