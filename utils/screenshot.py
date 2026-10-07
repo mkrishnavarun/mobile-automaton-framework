@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 
 from appium.webdriver.webdriver import WebDriver
@@ -17,7 +18,11 @@ class ScreenshotUtil:
 
         screenshot_directory.mkdir(exist_ok=True)
 
-        screenshot_path = screenshot_directory / f"{name}.png"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        screenshot_path = (
+            screenshot_directory / f"{name}_{timestamp}.png"
+        )
 
         driver.save_screenshot(str(screenshot_path))
 

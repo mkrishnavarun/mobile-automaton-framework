@@ -1,8 +1,15 @@
 from appium.webdriver.webdriver import WebDriver
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import (
+    ElementClickInterceptedException,
+    ElementNotInteractableException,
+    StaleElementReferenceException,
+)
+
 from utils.logger import Logger
 from utils.screenshot import ScreenshotUtil
 from core.exceptions import ElementInteractionError
+from utils.wait_utils import WaitUtils
+from utils.retry_utils import retry_on_exception
 
 
 class BasePage:
@@ -10,16 +17,14 @@ class BasePage:
 
     def __init__(self, driver: WebDriver, timeout: int = 10):
         self.driver = driver
-        self.wait = WebDriverWait(driver, timeout)
+        self.wait_utils = WaitUtils(driver, timeout)
         self.logger = Logger.get_logger(self.__class__.__name__)
 
     def find_element(self, locator):
         self.logger.info("Finding element: %s", locator)
 
         try:
-            element = self.wait.until(
-                lambda driver: driver.find_element(*locator)
-            )
+            element = self.wait_utils.wait_for_present(locator)
 
             self.logger.info("Element found: %s", locator)
 
@@ -46,12 +51,41 @@ class BasePage:
                 f"Unable to find element: {locator}"
             ) from exc
 
-
-
+    @retry_on_exception(retries=2, delay=1)
     def tap(self, locator):
         self.logger.info("Tapping element: %s", locator)
-        element = self.find_element(locator)
-        element.click()
+
+        try:
+            element = self.find_element(locator)
+            element.click()
+
+        except (
+                ElementClickInterceptedException,
+                ElementNotInteractableException,
+                StaleElementReferenceException,
+        ):
+            raise
+
+        except Exception as exc:
+            self.logger.error(
+                "Failed to tap element: %s",
+                locator,
+                exc_info=True,
+            )
+
+            try:
+                ScreenshotUtil.capture(
+                    self.driver,
+                    "tap_failed",
+                )
+            except Exception:
+                self.logger.exception(
+                    "Failed to capture tap failure screenshot"
+                )
+
+            raise ElementInteractionError(
+                f"Unable to tap element: {locator}"
+            ) from exc
 
     def enter_text(self, locator, text: str):
         element = self.find_element(locator)
