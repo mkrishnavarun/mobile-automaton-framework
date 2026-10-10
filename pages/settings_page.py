@@ -9,9 +9,8 @@ class SettingsPage(BasePage):
 
     NETWORK_OPTION = (
         "xpath",
-        '//android.widget.TextView[@text="Network & internet"]'
+        '//*[@text="Network & internet"]'
     )
-
     INTERNET_TITLE = (
         "xpath",
         '//android.widget.TextView[@text="Internet"]'
