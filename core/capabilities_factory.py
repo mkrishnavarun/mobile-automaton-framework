@@ -1,6 +1,5 @@
-from appium.options.android import UiAutomator2Options
-
 from config.config_loader import ConfigLoader
+from core.strategies.android_capabilities import AndroidCapabilities
 
 
 class CapabilitiesFactory:
@@ -11,16 +10,8 @@ class CapabilitiesFactory:
         platform = config.platform.lower()
 
         if platform == "android":
-            options = UiAutomator2Options()
-
-            options.platform_name = config.android["platform_name"]
-            options.automation_name = config.android["automation_name"]
-            options.device_name = config.android["device_name"]
-
-            options.app_package = config.app["package"]
-            options.app_activity = config.app["activity"]
-
-            return options
+            strategy = AndroidCapabilities()
+            return strategy.create_options(config)
 
         raise ValueError(
             f"Unsupported platform: {platform}"

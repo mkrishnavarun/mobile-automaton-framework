@@ -17,8 +17,8 @@ def test_driver_factory_rejects_unsupported_platform(monkeypatch):
     config = ConfigLoader("local")
 
     monkeypatch.setitem(
-        config.android,
-        "platform_name",
+        config.config,
+        "platform",
         "unsupported",
     )
 

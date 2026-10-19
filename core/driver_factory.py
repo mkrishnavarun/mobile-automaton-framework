@@ -7,7 +7,7 @@ class DriverFactory:
 
     @staticmethod
     def create_driver_manager(config: ConfigLoader):
-        platform = config.android["platform_name"].lower()
+        platform = config.platform.lower()
 
         if platform == "android":
             return DriverManager(config)
