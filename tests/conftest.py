@@ -9,9 +9,11 @@ import io
 from core.driver_factory import DriverFactory
 from api.api_client import APIClient
 from utils.screenshot import ScreenshotUtil
+from utils.test_metrics import TestMetrics
 import os
 from utils.driver_diagnostics import DriverDiagnostics
 
+_metrics_collector=None
 
 @pytest.fixture(autouse=True)
 def test_log_capture():
@@ -33,6 +35,12 @@ def pytest_addoption(parser):
         action="store",
         default="local",
         help="Environment to run tests against",
+    )
+    parser.addoption(
+        "--metrics-output",
+        action="store",
+        default="reports/metrics/test-results.json",
+        help="Path for the test execution metrics JSON file",
     )
 
 @pytest.hookimpl(tryfirst=True)
@@ -214,6 +222,15 @@ def pytest_runtest_makereport(item, call):
         report.extras = extra
 
 
+@pytest.hookimpl(tryfirst=True)
+def pytest_sessionstart(session):
+    global _metrics_collector
+
+    if not hasattr(session.config, "workerinput"):
+        _metrics_collector = TestMetrics()
+        session.config._test_metrics = _metrics_collector
+
+
 @pytest.fixture
 def driver(config):
     driver_manager = DriverFactory.create_driver_manager(config)
@@ -237,3 +254,22 @@ def api_client(config):
         yield client
     finally:
         client.close()
+
+
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_runtest_logreport(report):
+    """Collect test reports in the main pytest process."""
+    if _metrics_collector is not None:
+        _metrics_collector.record(report)
+
+@pytest.hookimpl(trylast=True)
+def pytest_sessionfinish(session, exitstatus):
+    """Save the final execution metrics."""
+    if (
+            not hasattr(session.config, "workerinput")
+            and _metrics_collector is not None
+    ):
+        output_path = session.config.getoption("--metrics-output")
+        _metrics_collector.save(output_path)

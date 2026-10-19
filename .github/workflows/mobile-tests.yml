@@ -296,6 +296,7 @@ jobs:
         run: |
           pytest -m "not mobile" -n 2 \
             --env local \
+            --metrics-output=reports/metrics/non-mobile-test-results.json \
             --html=reports/html/non-mobile-report.html \
             --self-contained-html
 
@@ -303,8 +304,29 @@ jobs:
         run: |
           pytest -m mobile \
             --env local \
+            --metrics-output=reports/metrics/mobile-test-results.json \
             --html=reports/html/mobile-report.html \
             --self-contained-html
+
+      - name: Display test execution summary
+        if: always()
+        run: |
+          echo "===== Non-Mobile Test Summary ====="
+          if [ -f reports/metrics/non-mobile-test-results-summary.txt ]; then
+            cat reports/metrics/non-mobile-test-results-summary.txt
+          else
+            echo "Non-mobile metrics summary was not generated."
+          fi
+          echo ""
+          echo "===== Mobile Test Summary ====="
+          if [ -f reports/metrics/mobile-test-results-summary.txt ]; then
+            cat reports/metrics/mobile-test-results-summary.txt
+          else
+            echo "Mobile metrics summary was not generated."
+          fi
+          echo ""
+          echo "===== Generated Metrics Files ====="
+          find reports/metrics -maxdepth 1 -type f -print 2>/dev/null || true
 
       - name: Upload test artifacts
         if: always()
