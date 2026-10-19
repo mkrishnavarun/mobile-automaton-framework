@@ -1,6 +1,7 @@
 from pages.settings_page import SettingsPage
+import pytest
 
-
+@pytest.mark.mobile
 def test_network_navigation(driver):
     settings_page = SettingsPage(driver)
 

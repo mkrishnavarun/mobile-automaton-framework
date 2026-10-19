@@ -41,3 +41,11 @@ class ConfigLoader:
     @property
     def app(self) -> dict:
         return self.config["app"]
+
+    @property
+    def platform(self) -> str:
+        return self.config["platform"]
+
+    @property
+    def api(self) -> dict:
+        return self.config["api"]

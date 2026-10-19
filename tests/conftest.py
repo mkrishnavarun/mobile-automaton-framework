@@ -1,12 +1,16 @@
 import pytest
 
 from config.config_loader import ConfigLoader
-from core.driver_manager import DriverManager
 from utils.test_data_loader import TestDataLoader
 from pages.settings_page import SettingsPage
 from pytest_html import extras
 import logging
 import io
+from core.driver_factory import DriverFactory
+from api.api_client import APIClient
+from utils.screenshot import ScreenshotUtil
+import os
+from utils.driver_diagnostics import DriverDiagnostics
 
 
 @pytest.fixture(autouse=True)
@@ -50,18 +54,6 @@ def config(request):
     environment = request.config.getoption("--env")
     return ConfigLoader(environment)
 
-
-@pytest.fixture(scope="function")
-def driver(config):
-    driver_manager = DriverManager(config)
-
-    mobile_driver = driver_manager.start_driver()
-
-    try:
-        yield mobile_driver
-    finally:
-        driver_manager.stop_driver()
-
 @pytest.fixture
 def login_data():
     return TestDataLoader.load("login_data.yaml")
@@ -79,57 +71,169 @@ def pytest_runtest_makereport(item, call):
         duration = f"{report.duration:.2f}s"
         report.user_properties.append(("Duration", duration))
 
-    if report.when == "call" and report.failed:
-        driver = item.funcargs.get("driver")
+    if report.when != "call" or not report.failed:
+        return
 
-        if driver:
-            import os
+    from pathlib import Path
 
-            screenshot_dir = "reports/html/screenshots"
-            os.makedirs(screenshot_dir, exist_ok=True)
+    driver = item.funcargs.get("driver")
 
-            file_name = f"{item.name}.png"
-            file_path = os.path.join(screenshot_dir, file_name)
+    project_root = Path(__file__).resolve().parent.parent
+    report_dir = project_root / "reports" / "html"
 
-            driver.save_screenshot(file_path)
+    screenshot_dir = report_dir / "screenshots"
+    source_dir = report_dir / "page_source"
+    diagnostics_dir = report_dir / "driver_details"
 
-            pytest_html = item.config.pluginmanager.getplugin("html")
+    screenshot_dir.mkdir(parents=True, exist_ok=True)
+    source_dir.mkdir(parents=True, exist_ok=True)
+    diagnostics_dir.mkdir(parents=True, exist_ok=True)
 
-            if pytest_html:
-                extra = getattr(report, "extras", [])
+    screenshot_path = None
+    page_source_path = None
+    diagnostics_path = None
 
+    if driver:
+        # Capture driver and device details
+        try:
+            diagnostics_path = Path(
+                DriverDiagnostics.capture(driver, item.name)
+            )
+
+            logging.info(
+                "Driver diagnostics captured: %s",
+                diagnostics_path,
+            )
+
+        except Exception:
+            logging.exception(
+                "Failed to capture driver diagnostics for test: %s",
+                item.name,
+            )
+
+        # Capture screenshot
+        try:
+            screenshot_path = screenshot_dir / f"{item.name}.png"
+
+            driver.save_screenshot(str(screenshot_path))
+
+            logging.info(
+                "Failure screenshot captured: %s",
+                screenshot_path,
+            )
+
+        except Exception:
+            logging.exception(
+                "Failed to capture screenshot for test: %s",
+                item.name,
+            )
+            screenshot_path = None
+
+        # Capture UI page source
+        try:
+            page_source_path = source_dir / f"{item.name}.xml"
+
+            page_source_path.write_text(
+                driver.page_source,
+                encoding="utf-8",
+            )
+
+            logging.info(
+                "Page source captured: %s",
+                page_source_path,
+            )
+
+        except Exception:
+            logging.exception(
+                "Failed to capture page source for test: %s",
+                item.name,
+            )
+            page_source_path = None
+
+    # Add diagnostics to the HTML report
+    if item.config.pluginmanager.getplugin("html"):
+        extra = list(getattr(report, "extras", []))
+
+        extra.append(
+            extras.text(
+                report.longreprtext,
+                name="Failure Details",
+            )
+        )
+
+        # Attach test logs
+        log_capture = item.funcargs.get("test_log_capture")
+
+        if log_capture:
+            logs = log_capture.getvalue()
+
+            if logs:
                 extra.append(
                     extras.text(
-                        report.longreprtext,
-                        name="Failure Details"
+                        logs,
+                        name="Test Logs",
                     )
                 )
 
-                # Add test logs
-                log_capture = item.funcargs.get("test_log_capture")
-
-                if log_capture:
-                    logs = log_capture.getvalue()
-
-                    if logs:
-                        extra.append(
-                            extras.text(
-                                logs,
-                                name="Test Logs"
-                            )
-                        )
-
-                report_relative_path = os.path.join(
-                    "..",
-                    "screenshots",
-                    file_name
+        # Embed screenshot
+        if screenshot_path and screenshot_path.exists():
+            extra.append(
+                extras.image(
+                    os.path.relpath(
+                        screenshot_path,
+                        report_dir,
+                    ),
+                    name="Failure Screenshot",
                 )
+            )
 
-                extra.append(
-                    extras.image(
-                        report_relative_path,
-                        name="Failure Screenshot"
-                    )
+        # Link page source
+        if page_source_path and page_source_path.exists():
+            extra.append(
+                extras.url(
+                    os.path.relpath(
+                        page_source_path,
+                        report_dir,
+                    ),
+                    name="Failure Page Source",
                 )
+            )
 
-                report.extras = extra
+        # Link driver diagnostics
+        if diagnostics_path and diagnostics_path.exists():
+            extra.append(
+                extras.url(
+                    os.path.relpath(
+                        diagnostics_path,
+                        report_dir,
+                    ),
+                    name="Driver Diagnostics",
+                )
+            )
+
+        report.extras = extra
+
+
+@pytest.fixture
+def driver(config):
+    driver_manager = DriverFactory.create_driver_manager(config)
+
+    mobile_driver = driver_manager.start_driver()
+
+    try:
+        yield mobile_driver
+    finally:
+        driver_manager.stop_driver()
+
+
+@pytest.fixture
+def api_client(config):
+    client = APIClient(
+        base_url=config.api["base_url"],
+        timeout=config.api["timeout"],
+    )
+
+    try:
+        yield client
+    finally:
+        client.close()

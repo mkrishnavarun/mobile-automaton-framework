@@ -4,6 +4,7 @@ from pathlib import Path
 from appium.webdriver.webdriver import WebDriver
 
 from utils.logger import Logger
+import os
 
 
 class ScreenshotUtil:
@@ -32,3 +33,4 @@ class ScreenshotUtil:
         )
 
         return str(screenshot_path)
+

@@ -292,10 +292,18 @@ jobs:
           echo "===== Appium status ====="
           curl -s http://127.0.0.1:4723/status
 
-      - name: Run tests
+      - name: Run non-mobile tests in parallel
         run: |
-          pytest --env local \
-            --html=reports/html/report.html \
+          pytest -m "not mobile" -n 2 \
+            --env local \
+            --html=reports/html/non-mobile-report.html \
+            --self-contained-html
+
+      - name: Run mobile tests sequentially
+        run: |
+          pytest -m mobile \
+            --env local \
+            --html=reports/html/mobile-report.html \
             --self-contained-html
 
       - name: Upload test artifacts

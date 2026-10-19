@@ -2,7 +2,7 @@ import pytest
 
 from core.exceptions import ElementInteractionError
 
-
+@pytest.mark.mobile
 def test_missing_element_generates_framework_error(settings_page):
     invalid_locator = (
         "id",
