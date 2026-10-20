@@ -34,7 +34,16 @@ class DriverManager(BaseDriver):
         return self.driver
 
     def stop_driver(self):
-        if self.driver:
-            self.logger.info("Stopping Appium driver")
-            self.driver.quit()
-            self.driver = None
+        if self.driver is None:
+            return
+
+        driver = self.driver
+        self.driver = None
+
+        self.logger.info("Stopping Appium driver")
+
+        try:
+            driver.quit()
+        except Exception:
+            self.logger.exception("Failed to stop Appium driver cleanly")
+            raise

@@ -235,9 +235,8 @@ def pytest_sessionstart(session):
 def driver(config):
     driver_manager = DriverFactory.create_driver_manager(config)
 
-    mobile_driver = driver_manager.start_driver()
-
     try:
+        mobile_driver = driver_manager.start_driver()
         yield mobile_driver
     finally:
         driver_manager.stop_driver()
