@@ -1,6 +1,9 @@
 import json
 from pathlib import Path
 
+from core.failure_classifier import classify_failure
+from utils.retry_metrics import retry_metrics
+
 
 class TestMetrics:
     """Collect and persist pytest execution metrics."""
@@ -24,6 +27,7 @@ class TestMetrics:
                 "is_slow": False,
                 "failure_stage": None,
                 "error_message": None,
+                "failure_category": None,
             },
         )
 
@@ -43,6 +47,9 @@ class TestMetrics:
 
             if report.longrepr:
                 result["error_message"] = str(report.longrepr)
+                result["failure_category"] = classify_failure(
+                    result["error_message"]
+                )
 
         elif report.skipped:
             result["outcome"] = "skipped"
@@ -64,6 +71,7 @@ class TestMetrics:
             "skipped": sum(r["outcome"] == "skipped" for r in results),
             "slow_tests": sum(r.get("is_slow", False) for r in results),
             "slow_test_threshold_seconds": self.slow_test_threshold,
+            "retry_metrics": retry_metrics.get_summary(),
             "results": results,
         }
 
@@ -108,6 +116,15 @@ class TestMetrics:
             f"Slow tests  : {len(slow_tests)}",
             f"Slow threshold: {self.slow_test_threshold} seconds",
         ]
+        retry_summary = retry_metrics.get_summary()
+
+        summary.extend([
+            "",
+            "RETRY METRICS",
+            f"Retry attempts       : {retry_summary['retry_attempts']}",
+            f"Recovered operations : {retry_summary['recovered_operations']}",
+            f"Exhausted operations : {retry_summary['exhausted_operations']}",
+        ])
 
         if failed_tests:
             summary.append("\nFailed tests:")
@@ -116,6 +133,9 @@ class TestMetrics:
                 summary.append(f"- {test['test_name']}")
                 summary.append(
                     f"  Stage: {test.get('failure_stage')}"
+                )
+                summary.append(
+                    f"  Category: {test.get('failure_category')}"
                 )
                 summary.append(
                     f"  Error: {test.get('error_message')}"

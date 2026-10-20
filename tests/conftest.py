@@ -10,10 +10,14 @@ from core.driver_factory import DriverFactory
 from api.api_client import APIClient
 from utils.screenshot import ScreenshotUtil
 from utils.test_metrics import TestMetrics
+from utils.retry_metrics import retry_metrics
 import os
 from utils.driver_diagnostics import DriverDiagnostics
+import tempfile
 
-_metrics_collector=None
+
+_metrics_collector = None
+_retry_metrics_path = None
 
 @pytest.fixture(autouse=True)
 def test_log_capture():
@@ -45,9 +49,17 @@ def pytest_addoption(parser):
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config):
+    # Initialize shared retry metrics storage before xdist workers start.
+    if not hasattr(config, "workerinput"):
+        config._retry_metrics_dir = tempfile.mkdtemp(
+            prefix="retry-metrics-"
+        )
+
     environment = config.getoption("--env")
 
     environment_config = ConfigLoader(environment)
+
+
 
     if hasattr(config, "_metadata"):
         config._metadata["Environment"] = environment
@@ -221,14 +233,49 @@ def pytest_runtest_makereport(item, call):
 
         report.extras = extra
 
+@pytest.hookimpl
+def pytest_configure_node(node):
+    """Share the retry metrics directory with each xdist worker."""
+    metrics_dir = getattr(
+        node.config,
+        "_retry_metrics_dir",
+        None,
+    )
+
+    if metrics_dir is None:
+        raise RuntimeError(
+            "Retry metrics directory was not initialized."
+        )
+
+    node.workerinput["retry_metrics_dir"] = metrics_dir
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_sessionstart(session):
-    global _metrics_collector
+    global _metrics_collector, _retry_metrics_path
 
-    if not hasattr(session.config, "workerinput"):
+    worker_input = getattr(session.config, "workerinput", None)
+
+    if worker_input is None:
         _metrics_collector = TestMetrics()
         session.config._test_metrics = _metrics_collector
+
+    worker_id = (
+        worker_input.get("workerid", "master")
+        if worker_input is not None
+        else "master"
+    )
+
+    if worker_input is not None:
+        metrics_dir = worker_input["retry_metrics_dir"]
+    else:
+        metrics_dir = session.config._retry_metrics_dir
+
+    _retry_metrics_path = os.path.join(
+        metrics_dir,
+        f"retry-metrics-{worker_id}.json",
+    )
+
+    retry_metrics.reset()
 
 
 @pytest.fixture
@@ -265,10 +312,41 @@ def pytest_runtest_logreport(report):
 
 @pytest.hookimpl(trylast=True)
 def pytest_sessionfinish(session, exitstatus):
-    """Save the final execution metrics."""
+    """Save and aggregate test execution and retry metrics."""
+    global _metrics_collector, _retry_metrics_path
+
+    # Each process saves only its own retry metrics.
+    if _retry_metrics_path:
+        retry_metrics.save(_retry_metrics_path)
+
+    # Only the main process aggregates metrics and writes the report.
     if (
-            not hasattr(session.config, "workerinput")
-            and _metrics_collector is not None
+        not hasattr(session.config, "workerinput")
+        and _metrics_collector is not None
     ):
         output_path = session.config.getoption("--metrics-output")
+        metrics_dir = session.config._retry_metrics_dir
+
+        # Start with zero counters, then merge every process exactly once.
+        retry_metrics.reset()
+
+        for filename in os.listdir(metrics_dir):
+            if (
+                filename.startswith("retry-metrics-")
+                and filename.endswith(".json")
+            ):
+                metrics_file = os.path.join(metrics_dir, filename)
+
+                try:
+                    import json
+
+                    with open(metrics_file, encoding="utf-8") as file:
+                        retry_metrics.merge(json.load(file))
+                except (OSError, ValueError, TypeError) as exc:
+                    logging.warning(
+                        "Could not read retry metrics file %s: %s",
+                        metrics_file,
+                        exc,
+                    )
+
         _metrics_collector.save(output_path)
