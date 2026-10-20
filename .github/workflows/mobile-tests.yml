@@ -1,9 +1,21 @@
 name: Mobile Automation Tests
 
 on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to run tests against"
+        required: true
+        type: choice
+        options:
+          - local
+          - qa
+        default: local
+
   push:
     branches:
       - master
+
   pull_request:
     branches:
       - master
@@ -11,6 +23,8 @@ on:
 jobs:
   mobile-tests:
     runs-on: ubuntu-latest
+    env:
+      TEST_ENV: ${{ github.event.inputs.environment || 'local' }}
 
     steps:
       - name: Checkout repository
@@ -105,16 +119,16 @@ jobs:
       - name: Verify Android Emulator
         run: |
           set -e
-      
+
           export PATH="$ANDROID_SDK_ROOT/emulator:$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
-      
+
           echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME"
           echo "ANDROID_SDK_HOME=$ANDROID_SDK_HOME"
           echo "HOME=$HOME"
-      
+
           echo "===== AVD LIST ====="
           emulator -list-avds
-      
+
           echo "===== AVD FILES ====="
           find "$HOME/.android" -maxdepth 3 -type f -print || true
 
@@ -126,25 +140,25 @@ jobs:
       - name: Enable KVM
         run: |
           set -e
-      
+
           echo "Current user: $USER"
           id
-      
+
           echo "KVM group before:"
           getent group kvm
-      
+
           sudo gpasswd -a "$USER" kvm
-      
+
           echo "KVM group after:"
           getent group kvm
-      
+
           # Refresh group membership for this shell
           sudo chown "$USER":"$(id -gn)" /dev/kvm || true
           sudo chmod 660 /dev/kvm
-      
+
           echo "KVM device:"
           ls -l /dev/kvm
-      
+
           echo "Testing KVM access..."
           if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
             echo "KVM access looks good."
@@ -187,7 +201,7 @@ jobs:
           test -w /dev/kvm
 
           echo "KVM is accessible."
-          
+
 
       - name: Start Android Emulator
         run: |
@@ -259,43 +273,44 @@ jobs:
       - name: Start Appium Server
         run: |
           set -e
-      
+
           echo "Starting Appium server..."
-      
+
           nohup appium \
             --address 127.0.0.1 \
             --port 4723 \
             > appium.log 2>&1 &
-      
+
           APPIUM_PID=$!
+          echo "$APPIUM_PID" > appium.pid
           echo "Appium PID: $APPIUM_PID"
-      
+
           echo "Waiting for Appium..."
-      
+
           for i in {1..30}; do
             if curl -s http://127.0.0.1:4723/status > /dev/null; then
               echo "Appium server is ready!"
               break
             fi
-      
+
             echo "Waiting for Appium... $i/30"
             sleep 2
           done
-      
+
           if ! curl -s http://127.0.0.1:4723/status > /dev/null; then
             echo "ERROR: Appium failed to start."
             echo "===== Appium log ====="
             cat appium.log
             exit 1
           fi
-      
+
           echo "===== Appium status ====="
           curl -s http://127.0.0.1:4723/status
 
       - name: Run non-mobile tests in parallel
         run: |
           pytest -m "not mobile" -n 2 \
-            --env local \
+            --env "$TEST_ENV" \
             --metrics-output=reports/metrics/non-mobile-test-results.json \
             --html=reports/html/non-mobile-report.html \
             --self-contained-html
@@ -303,11 +318,117 @@ jobs:
       - name: Run mobile tests sequentially
         run: |
           pytest -m mobile \
-            --env local \
+            --env "$TEST_ENV" \
             --metrics-output=reports/metrics/mobile-test-results.json \
             --html=reports/html/mobile-report.html \
             --self-contained-html
 
+      - name: Validate test reports and metrics
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          errors = []
+
+          metrics_files = [
+              Path("reports/metrics/non-mobile-test-results.json"),
+              Path("reports/metrics/mobile-test-results.json"),
+          ]
+
+          html_files = [
+              Path("reports/html/non-mobile-report.html"),
+              Path("reports/html/mobile-report.html"),
+          ]
+
+          for path in metrics_files:
+              print(f"\nChecking metrics: {path}")
+
+              if not path.is_file() or path.stat().st_size == 0:
+                  errors.append(f"Missing or empty metrics file: {path}")
+                  continue
+
+              try:
+                  data = json.loads(path.read_text(encoding="utf-8"))
+              except (json.JSONDecodeError, OSError) as exc:
+                  errors.append(f"Invalid metrics file {path}: {exc}")
+                  continue
+
+              if not isinstance(data, dict):
+                  errors.append(f"{path}: metrics JSON must contain an object")
+                  continue
+
+              required = {"total_tests", "passed", "failed", "skipped", "results"}
+              missing = required - data.keys()
+
+              if missing:
+                  errors.append(f"{path}: missing fields {sorted(missing)}")
+                  continue
+
+              total = data["total_tests"]
+              passed = data["passed"]
+              failed = data["failed"]
+              skipped = data["skipped"]
+              results = data["results"]
+
+              counts = {
+                  "total_tests": total,
+                  "passed": passed,
+                  "failed": failed,
+                  "skipped": skipped,
+              }
+
+              for name, value in counts.items():
+                  if type(value) is not int or value < 0:
+                      errors.append(
+                          f"{path}: {name} must be a non-negative integer"
+                      )
+
+              if type(total) is int and total <= 0:
+                  errors.append(
+                      f"{path}: total_tests must be greater than zero"
+                  )
+
+              if not isinstance(results, list):
+                  errors.append(f"{path}: results must be a list")
+                  continue
+
+              if all(type(value) is int and value >= 0
+                     for value in counts.values()):
+                  if passed + failed + skipped != total:
+                      errors.append(
+                          f"{path}: passed + failed + skipped "
+                          f"does not equal total_tests"
+                      )
+
+              print(
+                  f"Total={total}, Passed={passed}, "
+                  f"Failed={failed}, Skipped={skipped}"
+              )
+
+
+
+              if type(failed) is int and failed > 0:
+                  errors.append(f"{path}: {failed} test(s) failed")
+
+          for path in html_files:
+              print(f"\nChecking HTML report: {path}")
+
+              if not path.is_file() or path.stat().st_size == 0:
+                  errors.append(f"Missing or empty HTML report: {path}")
+              else:
+                  print(f"Report exists ({path.stat().st_size} bytes)")
+
+          if errors:
+              print("\nQUALITY GATE FAILED:")
+              for error in errors:
+                  print(f"- {error}")
+              sys.exit(1)
+
+          print("\nQUALITY GATE PASSED")
+          PY
       - name: Display test execution summary
         if: always()
         run: |
@@ -327,6 +448,32 @@ jobs:
           echo ""
           echo "===== Generated Metrics Files ====="
           find reports/metrics -maxdepth 1 -type f -print 2>/dev/null || true
+
+      - name: Display infrastructure logs on failure
+        if: failure()
+        run: |
+          echo "===== Appium Log (last 200 lines) ====="
+          if [ -f appium.log ]; then
+            tail -n 200 appium.log
+          else
+            echo "appium.log not found"
+          fi
+
+          echo ""
+          echo "===== Emulator Log (last 200 lines) ====="
+          if [ -f emulator.log ]; then
+            tail -n 200 emulator.log
+          else
+            echo "emulator.log not found"
+          fi
+
+          echo ""
+          echo "===== ADB Devices ====="
+          adb devices || true
+
+          echo ""
+          echo "===== Generated Reports ====="
+          find reports -maxdepth 4 -type f -print 2>/dev/null || true
 
       - name: Upload test artifacts
         if: always()
@@ -348,6 +495,7 @@ jobs:
 
           if [ -f appium.pid ]; then
             kill "$(cat appium.pid)" || true
+            rm -f appium.pid
           fi
 
           echo "Stopping Android emulator..."
